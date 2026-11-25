@@ -1,0 +1,16 @@
+SMART RECYCLING ASSISTANT — START HERE
+
+1. Extract this ZIP.
+2. Open PowerShell in the extracted Smart_Recycling_Assistant folder.
+3. Create/activate a virtual environment and install dependencies:
+   python -m venv .venv
+   .\.venv\Scripts\Activate.ps1
+   pip install -r requirements.txt
+4. Run the existing model:
+   python -m streamlit run app.py
+5. Open Waste Detection. Choose Capture with camera or Upload from gallery.
+
+For phone access and camera notes, read MOBILE_SETUP.md.
+For TACO preparation and retraining, read README.md and scripts/README.md.
+The current assistant is a local knowledge-base fallback, not yet Llama.
+The current project is a mobile-accessible Streamlit web app, not an APK.

@@ -1,0 +1,1 @@
+Place or reference your extracted datasets outside the source repository. See README.md for RealWaste training and TACO preparation commands. Do not commit large datasets to GitHub.
