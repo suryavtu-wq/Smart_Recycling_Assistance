@@ -19,7 +19,7 @@ A Streamlit-based AI project for image-based waste category suggestions and gene
 
 This ZIP contains a working Streamlit application and a MobileNetV2 image classifier checkpoint. The AI Assistant currently uses a local rule/knowledge-base fallback; it is **not Llama**. The Llama-family model and ExecuTorch on-device runtime are documented as a next implementation requirement, not represented as completed.
 
-The project includes a native Android client in `android_app/`. The Android app uses the Python API in `mobile_api.py`; inference still runs on the computer/server, so it is not an offline on-device model. See `MOBILE_SETUP.md` to run the API and build/install the Android app.
+The project includes a native Android client in `android_app/`. The Android app uses the Python API in `mobile_api.py`; inference runs online on a server, not on the phone. Render deployment configuration is included. See `MOBILE_SETUP.md` to deploy the API and build/install the Android app.
 
 The classifier predicts one category for the whole image. It is not an object detector and is not designed to classify several separate objects in one photograph.
 

@@ -1,0 +1,8 @@
+services:
+  - type: web
+    name: smart-recycling-api
+    runtime: python
+    region: singapore
+    buildCommand: pip install -r requirements-api.txt
+    startCommand: uvicorn mobile_api:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
