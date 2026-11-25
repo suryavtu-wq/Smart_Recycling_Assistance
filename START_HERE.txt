@@ -13,4 +13,5 @@ SMART RECYCLING ASSISTANT — START HERE
 For phone access and camera notes, read MOBILE_SETUP.md.
 For TACO preparation and retraining, read README.md and scripts/README.md.
 The current assistant is a local knowledge-base fallback, not yet Llama.
-The current project is a mobile-accessible Streamlit web app, not an APK.
+Deploy the Streamlit app to Community Cloud for internet access from a phone.
+Open android_app in Android Studio to run or build the HTTPS website-wrapper APK.

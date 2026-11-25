@@ -1,51 +1,60 @@
 package com.smartrecycling.assistant
 
-import android.graphics.BitmapFactory
+import android.Manifest
+import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.Color
-import android.graphics.Typeface
-import android.graphics.drawable.GradientDrawable
 import android.net.Uri
 import android.os.Bundle
-import android.view.Gravity
+import android.view.View
 import android.view.ViewGroup
+import android.webkit.CookieManager
+import android.webkit.PermissionRequest
+import android.webkit.ValueCallback
+import android.webkit.WebChromeClient
+import android.webkit.WebChromeClient.FileChooserParams
+import android.webkit.WebResourceRequest
+import android.webkit.WebView
+import android.webkit.WebViewClient
 import android.widget.Button
 import android.widget.EditText
-import android.widget.ImageView
 import android.widget.LinearLayout
 import android.widget.ProgressBar
-import android.widget.ScrollView
 import android.widget.TextView
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.appcompat.app.AppCompatActivity
-import androidx.core.content.FileProvider
-import org.json.JSONObject
-import java.io.File
-import java.io.IOException
-import java.net.HttpURLConnection
-import java.net.URL
-import java.nio.charset.StandardCharsets
-import java.util.Locale
-import java.util.concurrent.Executors
 
 class MainActivity : AppCompatActivity() {
-    private val executor = Executors.newSingleThreadExecutor()
-    private lateinit var endpointInput: EditText
-    private lateinit var imagePreview: ImageView
+    private lateinit var addressInput: EditText
+    private lateinit var browser: WebView
     private lateinit var statusText: TextView
-    private lateinit var resultBox: LinearLayout
-    private lateinit var progress: ProgressBar
-    private lateinit var identifyButton: Button
-    private var selectedImage: Uri? = null
-    private var cameraImage: Uri? = null
+    private lateinit var progressBar: ProgressBar
+    private var trustedHost: String? = null
+    private var fileChooserCallback: ValueCallback<Array<Uri>>? = null
+    private var cameraRequest: PermissionRequest? = null
 
-    private val galleryPicker =
+    private val imagePicker =
         registerForActivityResult(ActivityResultContracts.GetContent()) { uri ->
-            uri?.let(::showSelectedImage)
+            fileChooserCallback?.onReceiveValue(uri?.let { arrayOf(it) })
+            fileChooserCallback = null
         }
 
-    private val cameraCapture =
-        registerForActivityResult(ActivityResultContracts.TakePicture()) { saved ->
-            if (saved) cameraImage?.let(::showSelectedImage)
+    private val cameraPermission =
+        registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+            val request = cameraRequest
+            cameraRequest = null
+            if (granted && request != null && isTrustedOrigin(request.origin)) {
+                val cameraResources = request.resources.filter {
+                    it == PermissionRequest.RESOURCE_VIDEO_CAPTURE
+                }.toTypedArray()
+                if (cameraResources.isNotEmpty()) {
+                    request.grant(cameraResources)
+                } else {
+                    request.deny()
+                }
+            } else {
+                request?.deny()
+            }
         }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -53,268 +62,203 @@ class MainActivity : AppCompatActivity() {
         window.statusBarColor = Color.rgb(242, 247, 241)
         window.navigationBarColor = Color.rgb(242, 247, 241)
         window.decorView.systemUiVisibility =
-            android.view.View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or
-                android.view.View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
+            View.SYSTEM_UI_FLAG_LIGHT_STATUS_BAR or View.SYSTEM_UI_FLAG_LIGHT_NAVIGATION_BAR
 
-        val preferences = getSharedPreferences("mobile_settings", MODE_PRIVATE)
-        val content = LinearLayout(this).apply {
+        val root = LinearLayout(this).apply {
             orientation = LinearLayout.VERTICAL
-            setPadding(dp(20), dp(28), dp(20), dp(28))
+            setPadding(dp(16), dp(18), dp(16), dp(8))
+            setBackgroundColor(Color.rgb(242, 247, 241))
         }
-        content.setBackgroundColor(Color.rgb(242, 247, 241))
+        root.addView(
+            TextView(this).apply {
+                text = "Smart Recycling"
+                textSize = 24f
+                setTextColor(Color.rgb(24, 71, 51))
+                setPadding(0, 0, 0, dp(8))
+            }
+        )
+        root.addView(
+            TextView(this).apply {
+                text = "Paste your deployed Streamlit app URL to get started."
+                textSize = 14f
+                setTextColor(Color.DKGRAY)
+            }
+        )
 
-        content.addView(label("♻  Smart Recycling", 28, Color.rgb(24, 71, 51), true))
-        content.addView(label("Identify an item and get practical sorting guidance.", 15, Color.DKGRAY))
-        content.addView(label("API server address", 14, Color.rgb(65, 75, 68), true, top = 22))
-        endpointInput = EditText(this).apply {
+        addressInput = EditText(this).apply {
+            hint = "https://your-app.streamlit.app"
             setSingleLine(true)
-            hint = "http://192.168.1.20:8000"
-            setText(preferences.getString("api_url", "http://10.0.2.2:8000"))
             inputType = android.text.InputType.TYPE_CLASS_TEXT or
                 android.text.InputType.TYPE_TEXT_VARIATION_URI
-            setPadding(dp(14), dp(4), dp(14), dp(4))
+            setText(getSharedPreferences("mobile_settings", MODE_PRIVATE).getString("site_url", ""))
+            setPadding(dp(12), dp(4), dp(12), dp(4))
             background = rounded(Color.WHITE, 12)
         }
-        content.addView(endpointInput, matchWidth(height = 54))
-        content.addView(
-            label(
-                "Use your computer's Wi-Fi IP on a real phone; 10.0.2.2 is for the Android emulator.",
-                12,
-                Color.GRAY,
-                top = 6,
-            )
-        )
-
-        val imageActions = LinearLayout(this).apply {
-            orientation = LinearLayout.HORIZONTAL
-            gravity = Gravity.CENTER
-        }
-        imageActions.addView(
-            button("Take photo") {
-                val file = File(cacheDir, "images/${System.currentTimeMillis()}.jpg")
-                file.parentFile?.mkdirs()
-                cameraImage = FileProvider.getUriForFile(
-                    this,
-                    "$packageName.fileprovider",
-                    file,
-                )
-                cameraCapture.launch(cameraImage)
+        root.addView(
+            addressInput,
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(52)).apply {
+                topMargin = dp(12)
             },
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginEnd = dp(6) },
         )
-        imageActions.addView(
-            button("Choose image") { galleryPicker.launch("image/*") },
-            LinearLayout.LayoutParams(0, dp(52), 1f).apply { marginStart = dp(6) },
+
+        root.addView(
+            Button(this).apply {
+                text = "Open recycling app"
+                isAllCaps = false
+                setOnClickListener { openWebsite() }
+            },
+            LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(50)).apply {
+                topMargin = dp(8)
+            },
         )
-        content.addView(imageActions, matchWidth(top = 20))
 
-        imagePreview = ImageView(this).apply {
-            scaleType = ImageView.ScaleType.CENTER_CROP
-            background = rounded(Color.rgb(225, 233, 225), 16)
-            contentDescription = "Selected waste image"
+        progressBar = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal).apply {
+            max = 100
+            visibility = View.GONE
         }
-        content.addView(imagePreview, matchWidth(height = 240, top = 16))
+        root.addView(progressBar, ViewGroup.LayoutParams.MATCH_PARENT, dp(3))
 
-        identifyButton = button("Identify this item") { submitImage() }
-        identifyButton.isEnabled = false
-        content.addView(identifyButton, matchWidth(height = 54, top = 14))
-        progress = ProgressBar(this).apply { visibility = android.view.View.GONE }
-        content.addView(progress, centered(top = 12))
-        statusText = label("Take a photo or choose one from your gallery.", 14, Color.DKGRAY, top = 12)
-        content.addView(statusText)
-
-        resultBox = LinearLayout(this).apply {
-            orientation = LinearLayout.VERTICAL
-            setPadding(dp(16), dp(16), dp(16), dp(16))
-            background = rounded(Color.WHITE, 16)
-            visibility = android.view.View.GONE
+        statusText = TextView(this).apply {
+            text = "The website requires an internet connection."
+            textSize = 13f
+            setTextColor(Color.DKGRAY)
+            setPadding(0, dp(6), 0, dp(6))
         }
-        content.addView(resultBox, matchWidth(top = 16))
+        root.addView(statusText)
 
-        val scrollView = ScrollView(this).apply { addView(content) }
-        setContentView(scrollView)
+        browser = WebView(this).apply {
+            setBackgroundColor(Color.WHITE)
+            settings.javaScriptEnabled = true
+            settings.domStorageEnabled = true
+            settings.mediaPlaybackRequiresUserGesture = false
+            settings.mixedContentMode = android.webkit.WebSettings.MIXED_CONTENT_NEVER_ALLOW
+            settings.allowFileAccess = false
+            settings.allowContentAccess = true
+            CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
+            webViewClient = createWebViewClient()
+            webChromeClient = createWebChromeClient()
+        }
+        root.addView(
+            browser,
+            LinearLayout.LayoutParams(
+                ViewGroup.LayoutParams.MATCH_PARENT,
+                0,
+                1f,
+            ),
+        )
+        setContentView(root)
+
+        val savedUrl = addressInput.text.toString().trim()
+        if (savedUrl.isNotEmpty()) {
+            openWebsite()
+        }
     }
 
-    private fun showSelectedImage(uri: Uri) {
-        selectedImage = uri
-        imagePreview.setImageURI(uri)
-        identifyButton.isEnabled = true
-        resultBox.visibility = android.view.View.GONE
-        statusText.text = "Image ready. Tap Identify this item."
-    }
-
-    private fun submitImage() {
-        val image = selectedImage ?: return
-        val baseUrl = endpointInput.text.toString().trim().trimEnd('/')
-        if (!baseUrl.startsWith("http://") && !baseUrl.startsWith("https://")) {
-            statusText.text = "Enter a server address starting with http:// or https://."
+    private fun openWebsite() {
+        val uri = Uri.parse(addressInput.text.toString().trim())
+        val host = uri.host
+        if (uri.scheme != "https" || host.isNullOrBlank() || uri.userInfo != null) {
+            statusText.text = "Enter your app's full HTTPS URL, such as https://your-app.streamlit.app"
             return
         }
+
+        trustedHost = host
         getSharedPreferences("mobile_settings", MODE_PRIVATE)
             .edit()
-            .putString("api_url", baseUrl)
+            .putString("site_url", uri.toString())
             .apply()
+        statusText.text = "Loading recycling app..."
+        browser.loadUrl(uri.toString())
+    }
 
-        identifyButton.isEnabled = false
-        progress.visibility = android.view.View.VISIBLE
-        statusText.text = "Analyzing image…"
-        resultBox.visibility = android.view.View.GONE
+    private fun createWebChromeClient() = object : WebChromeClient() {
+        override fun onProgressChanged(view: WebView?, newProgress: Int) {
+            progressBar.progress = newProgress
+            progressBar.visibility = if (newProgress in 1..99) View.VISIBLE else View.GONE
+        }
 
-        executor.execute {
-            try {
-                val response = requestPrediction(baseUrl, image)
-                runOnUiThread { showResult(response) }
-            } catch (error: IOException) {
-                runOnUiThread {
-                    statusText.text = error.message ?: "Could not reach the API server."
+        override fun onShowFileChooser(
+            webView: WebView?,
+            callback: ValueCallback<Array<Uri>>?,
+            params: FileChooserParams?,
+        ): Boolean {
+            fileChooserCallback?.onReceiveValue(null)
+            if (callback == null || trustedHost == null) return false
+            fileChooserCallback = callback
+            imagePicker.launch("image/*")
+            return true
+        }
+
+        override fun onPermissionRequest(request: PermissionRequest) {
+            runOnUiThread {
+                if (!isTrustedOrigin(request.origin) ||
+                    !request.resources.contains(PermissionRequest.RESOURCE_VIDEO_CAPTURE)
+                ) {
+                    request.deny()
+                    return@runOnUiThread
                 }
-            } catch (error: org.json.JSONException) {
-                runOnUiThread { statusText.text = "The API returned an invalid response." }
-            } finally {
-                runOnUiThread {
-                    progress.visibility = android.view.View.GONE
-                    identifyButton.isEnabled = selectedImage != null
+
+                if (checkSelfPermission(Manifest.permission.CAMERA) ==
+                    PackageManager.PERMISSION_GRANTED
+                ) {
+                    request.grant(arrayOf(PermissionRequest.RESOURCE_VIDEO_CAPTURE))
+                } else {
+                    cameraRequest?.deny()
+                    cameraRequest = request
+                    cameraPermission.launch(Manifest.permission.CAMERA)
                 }
             }
         }
+
+        override fun onPermissionRequestCanceled(request: PermissionRequest) {
+            if (cameraRequest == request) cameraRequest = null
+        }
     }
 
-    private fun requestPrediction(baseUrl: String, image: Uri): JSONObject {
-        val boundary = "----SmartRecycling${System.currentTimeMillis()}"
-        val connection = (URL("$baseUrl/predict").openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            connectTimeout = 15_000
-            readTimeout = 120_000
-            doOutput = true
-            setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-        }
-        try {
-            connection.outputStream.use { output ->
-                output.write(
-                    "--$boundary\r\n".toByteArray(StandardCharsets.UTF_8)
-                )
-                output.write(
-                    "Content-Disposition: form-data; name=\"file\"; filename=\"waste-image.jpg\"\r\n".toByteArray(
-                        StandardCharsets.UTF_8
-                    )
-                )
-                output.write("Content-Type: application/octet-stream\r\n\r\n".toByteArray(StandardCharsets.UTF_8))
-                val input = contentResolver.openInputStream(image)
-                    ?: throw IOException("Could not read the selected image.")
-                input.use { it.copyTo(output) }
-                output.write("\r\n--$boundary--\r\n".toByteArray(StandardCharsets.UTF_8))
+    private fun createWebViewClient() = object : WebViewClient() {
+        override fun shouldOverrideUrlLoading(
+            view: WebView?,
+            request: WebResourceRequest?,
+        ): Boolean {
+            val uri = request?.url ?: return false
+            if (uri.scheme == "https" && uri.host == trustedHost) return false
+            if (uri.scheme == "https") {
+                startActivity(Intent(Intent.ACTION_VIEW, uri))
             }
-            val statusCode = connection.responseCode
-            val stream = if (statusCode in 200..299) connection.inputStream else connection.errorStream
-                ?: throw IOException("API request failed with HTTP $statusCode.")
-            val body = stream.bufferedReader(StandardCharsets.UTF_8).use { it.readText() }
-            val json = JSONObject(body)
-            if (statusCode !in 200..299) {
-                throw IOException(json.optString("detail", "API request failed with HTTP $statusCode."))
-            }
-            return json
-        } finally {
-            connection.disconnect()
+            return true
+        }
+
+        override fun onPageFinished(view: WebView?, url: String?) {
+            statusText.text = "Ready. Choose camera capture or gallery upload on the page."
         }
     }
 
-    private fun showResult(response: JSONObject) {
-        resultBox.removeAllViews()
-        val confidence = response.getDouble("confidence")
-        resultBox.addView(label(response.getString("category"), 23, Color.rgb(24, 71, 51), true))
-        resultBox.addView(
-            label(
-                "Model score: ${String.format(Locale.getDefault(), "%.1f%%", confidence * 100)}",
-                14,
-                Color.DKGRAY,
-                top = 4,
-            )
-        )
-        if (response.getBoolean("low_confidence")) {
-            resultBox.addView(
-                label(
-                    "Low-confidence result. Try a clear photo of one item in good lighting.",
-                    14,
-                    Color.rgb(150, 87, 0),
-                    top = 10,
-                )
-            )
-        } else {
-            resultBox.addView(
-                label(
-                    "A model score is not a guarantee. Verify the material and local collection rules.",
-                    13,
-                    Color.DKGRAY,
-                    top = 10,
-                )
-            )
-        }
+    private fun isTrustedOrigin(origin: Uri) =
+        origin.scheme == "https" && origin.host == trustedHost
 
-        resultBox.addView(label("Other suggestions", 16, Color.BLACK, true, top = 18))
-        val suggestions = response.getJSONArray("top_suggestions")
-        for (index in 0 until suggestions.length()) {
-            val item = suggestions.getJSONObject(index)
-            resultBox.addView(
-                label(
-                    "${item.getString("category")} — ${String.format(Locale.getDefault(), "%.1f%%", item.getDouble("confidence") * 100)}",
-                    14,
-                    Color.DKGRAY,
-                    top = 4,
-                )
-            )
-        }
-
-        val guidance = response.getJSONObject("guidance")
-        resultBox.addView(label("Disposal", 16, Color.BLACK, true, top = 18))
-        resultBox.addView(label(guidance.getString("disposal"), 14, Color.DKGRAY, top = 4))
-        resultBox.addView(label("Recycling", 16, Color.BLACK, true, top = 14))
-        resultBox.addView(label(guidance.getString("recycling"), 14, Color.DKGRAY, top = 4))
-        statusText.text = "Identification complete. Follow your local waste authority's guidance."
-        resultBox.visibility = android.view.View.VISIBLE
-    }
-
-    private fun label(
-        text: String,
-        size: Int,
-        color: Int,
-        bold: Boolean = false,
-        top: Int = 0,
-    ) = TextView(this).apply {
-        this.text = text
-        textSize = size.toFloat()
-        setTextColor(color)
-        if (bold) setTypeface(typeface, Typeface.BOLD)
-        setPadding(0, dp(top), 0, dp(2))
-    }
-
-    private fun button(text: String, action: () -> Unit) = Button(this).apply {
-        this.text = text
-        isAllCaps = false
-        setTextColor(Color.WHITE)
-        background = rounded(Color.rgb(36, 112, 75), 14)
-        setOnClickListener { action() }
-    }
-
-    private fun rounded(color: Int, radius: Int) = GradientDrawable().apply {
-        setColor(color)
-        cornerRadius = dp(radius).toFloat()
-    }
-
-    private fun matchWidth(height: Int = ViewGroup.LayoutParams.WRAP_CONTENT, top: Int = 0) =
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(height)).apply {
-            topMargin = dp(top)
-        }
-
-    private fun centered(top: Int = 0) =
-        LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply {
-            gravity = Gravity.CENTER_HORIZONTAL
-            topMargin = dp(top)
+    private fun rounded(color: Int, radius: Int) =
+        android.graphics.drawable.GradientDrawable().apply {
+            setColor(color)
+            cornerRadius = dp(radius).toFloat()
         }
 
     private fun dp(value: Int) = (value * resources.displayMetrics.density).toInt()
 
+    override fun onBackPressed() {
+        if (::browser.isInitialized && browser.canGoBack()) {
+            browser.goBack()
+        } else {
+            super.onBackPressed()
+        }
+    }
+
     override fun onDestroy() {
-        executor.shutdown()
+        fileChooserCallback?.onReceiveValue(null)
+        cameraRequest?.deny()
+        if (::browser.isInitialized) {
+            browser.stopLoading()
+            browser.destroy()
+        }
         super.onDestroy()
     }
 }

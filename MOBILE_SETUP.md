@@ -1,68 +1,42 @@
-# Use the Android app
+# Mobile website and Android APK
 
-This project now includes a native Android client in `android_app/`. The Python
-classifier runs on a server; the Android client sends the selected or captured
-image to that API and displays the prediction and disposal guidance. The model
-is not packaged to run offline on Android.
+The easiest way to use this project on a phone without a paid prediction API is
+to host the existing Streamlit app on Streamlit Community Cloud. The app already
+supports camera capture and gallery upload. The Android project is a WebView
+wrapper around that hosted website; predictions still require internet access.
 
-## Deploy the prediction API to Render
+## Deploy the website
 
-The repository includes `render.yaml` and `requirements-api.txt` for deployment.
+1. Sign in at [share.streamlit.io](https://share.streamlit.io/) with the GitHub
+   account that owns this repository.
+2. Choose **Create app** (or **New app**) and select
+   `YAGATI-SURYA-29/Smart-Recycling-Assistant`.
+3. Select branch `main` and main file path `app.py`.
+4. Deploy the app and wait for the install/build process to finish. The first
+   deployment can take several minutes while PyTorch installs.
+5. Open the Streamlit URL it gives you, then test camera capture and image
+   upload in a phone browser.
 
-1. Sign in to Render using the GitHub account that owns the repository.
-2. Choose **New > Blueprint** and select `YAGATI-SURYA-29/Smart-Recycling-Assistant`
-   on the `main` branch.
-3. Review the service settings and the current plan's cost, RAM, and availability
-   before applying. PyTorch needs more memory than a small static website; a
-   plan with too little memory can fail during startup or prediction.
-4. Wait for the service to become **Live** and copy its HTTPS URL, for example
-   `https://smart-recycling-api.onrender.com`.
-5. Open `https://YOUR-SERVICE-URL/health`. Confirm the response includes
-   `"status":"ok"` and `"model_available":true`.
-6. In the Android app, enter the HTTPS service URL as **API server address**.
-   The app remembers the address. It can then send images from any network with
-   internet access.
+Community Cloud is a free hosting option, but apps are subject to its resource
+limits and availability. Keep the GitHub repository private or public according
+to your preference; Community Cloud supports both. Images selected in the app
+are uploaded to the hosted service for prediction.
 
-Render deploys the Python API and model; it does not build the Android APK.
-Check the selected plan's pricing and sleep/cold-start behavior before creating
-the service. The prediction endpoint is public and does not require sign-in, so
-do not upload private images or share the service URL widely.
-
-## Test locally (optional)
-
-From the project root in PowerShell:
-
-```powershell
-python -m pip install -r requirements.txt
-python -m uvicorn mobile_api:app --host 0.0.0.0 --port 8000
-```
-
-Check `http://127.0.0.1:8000/health` on the computer. For local phone testing,
-connect both devices to the same trusted Wi-Fi and set the app address to
-`http://YOUR-COMPUTER-IP:8000`. Allow Python through Windows Firewall on the
-private network if prompted. This local HTTP setup is for testing only; use the
-Render HTTPS URL for internet access.
-
-## Build and install the Android app
+## Build and use the Android APK
 
 1. Install Android Studio with Android SDK Platform 35.
 2. Open the `android_app` folder in Android Studio and allow Gradle sync.
 3. Connect an Android phone with USB debugging enabled, or start an emulator.
 4. Select the `app` run configuration and press **Run**.
-
-For local emulator testing, the default address `http://10.0.2.2:8000` works
-when the API runs on the same computer. For the hosted app, use the Render
-HTTPS URL instead.
+5. In the app, paste the HTTPS Streamlit URL from the deployment and tap
+   **Open recycling app**.
+6. Allow camera permission when Android asks. The website's gallery picker
+   opens through the Android app.
 
 To create a debug APK in Android Studio, use **Build > Build App Bundle(s) /
 APK(s) > Build APK(s)**. The generated APK can be found under
 `android_app/app/build/outputs/apk/debug/`.
 
-## Limitations
-
-- Image classification runs on the API host, so internet access and an
-  available hosting service are required.
-- Camera capture and gallery selection use Android's system interfaces.
-- The model predicts one category for the whole image; it is not an object
-  detector. Confirm the material and follow local disposal rules.
-- This creates a debug APK workflow, not a Play Store-ready signed release.
+The APK is a website wrapper, not an offline/native model app. It requires
+internet access and loads the Streamlit site. The app only accepts HTTPS URLs;
+camera access is granted to the configured site origin.

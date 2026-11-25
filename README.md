@@ -7,7 +7,7 @@ A Streamlit-based AI project for image-based waste category suggestions and gene
 - Dashboard with prediction statistics and history.
 - Waste detection from **mobile/desktop camera capture** or image upload from the gallery/files.
 - Mobile-friendly browser access when the app is running on a reachable host.
-- Native Android camera/gallery app backed by the existing Python classifier API.
+- Android WebView wrapper for the hosted Streamlit app.
 - MobileNetV2 image classifier with top-three suggestions and probability scores.
 - General disposal, recycling and environmental guidance for the nine categories.
 - Offline knowledge-base assistant.
@@ -19,7 +19,7 @@ A Streamlit-based AI project for image-based waste category suggestions and gene
 
 This ZIP contains a working Streamlit application and a MobileNetV2 image classifier checkpoint. The AI Assistant currently uses a local rule/knowledge-base fallback; it is **not Llama**. The Llama-family model and ExecuTorch on-device runtime are documented as a next implementation requirement, not represented as completed.
 
-The project includes a native Android client in `android_app/`. The Android app uses the Python API in `mobile_api.py`; inference runs online on a server, not on the phone. Render deployment configuration is included. See `MOBILE_SETUP.md` to deploy the API and build/install the Android app.
+The project includes an Android WebView wrapper in `android_app/`. It loads the Streamlit app hosted on Streamlit Community Cloud; inference runs on that hosted service, not on the phone. See `MOBILE_SETUP.md` to deploy the website and build/install the APK.
 
 The classifier predicts one category for the whole image. It is not an object detector and is not designed to classify several separate objects in one photograph.
 
@@ -28,13 +28,12 @@ The classifier predicts one category for the whole image. It is not an object de
 ```text
 Smart_Recycling_Assistant/
 ├── app.py
-├── mobile_api.py
 ├── train.py
 ├── requirements.txt
 ├── README.md
 ├── MOBILE_SETUP.md
 ├── android_app/
-│   └── app/                 # Native Android client
+│   └── app/                 # Android WebView wrapper
 ├── .gitignore
 ├── src/
 │   ├── predictor.py
